@@ -1,0 +1,339 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description:  "OpenVPN AS on Amazon Linux"
+
+
+Parameters:
+
+      pInstanceType:
+         Type: "String"
+         Default: "t2.micro"
+         AllowedValues:
+           - "t2.micro"
+           - "t2.small"
+           - "t2.medium"
+           - "t2.large"
+           - "m4.large"
+           - "m4.xlarge"
+           - "m4.2xlarge"
+         Description: ""
+         ConstraintDescription: "Must be a valid EC2 instance type."
+
+      pSubnetId:
+         Type: "AWS::EC2::Subnet::Id"
+         Description: "Subnet must be public."
+
+      pAdminPassword:
+         Type: "String"
+         Description: "Min 8 characters.  Retained in userdata. ** Change or purge userdata post launch. **"
+         NoEcho: "true"
+         MinLength: "8"
+         MaxLength: "32"
+         ConstraintDescription: "Must contain at least 8 characters."
+         Default: "rxlcCHANGETHIScf7vCKc"
+
+      pAdminCidr:
+         Type: "String"
+         Description: "Allows HTTPS Port 943 Web Adminsitration Access."
+         Default: "52.200.190.13/32"
+
+      pBastionCidr:
+         Type: "String"
+         Description: "Allows SSH ingress."
+         Default: "52.55.116.107/32"
+
+      pKeyName:
+        Type: "AWS::EC2::KeyPair::KeyName"
+        Description: ""
+
+      pVpcId:
+         Type: "AWS::EC2::VPC::Id"
+         Description: ""
+
+      pVpcCidr:
+        Type: "String"
+        Description: "OpenVPN will route for this CIDR."
+        Default: "172.20.0.0/16"
+
+      pTagEnvironment:
+        Type: "String"
+        Description: "Environment type for default resource tagging."
+        Default: "production"
+        AllowedValues:
+          - "production"
+          - "staging"
+          - "sandbox"
+          - "test"
+          - "development"
+          - "qa"
+          - "dr"
+
+      pTagOwner:
+        Type: "String"
+        Description: "Owner of the resources.  Person/Department, etc."
+        Default: ""
+
+      pEnableTerminationProtection:
+        Type: "String"
+        Default: "true"
+        Description: ""
+        AllowedValues:
+          - "true"
+          - "false"
+
+      pSourceAmi:
+        Type: "String"
+        Description: "Optional.  Empty entry will use Amazon Linux AMI from internal map."
+        Default: ""
+
+
+Metadata:
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Networking Settings"
+        Parameters:
+          - "pVpcId"
+          - "pVpcCidr"
+          - "pSubnetId"
+      - Label:
+          default: "EC2 Instance Settings"
+        Parameters:
+          - "pSourceAmi"
+          - "pInstanceType"
+          - "pKeyName"
+          - "pEnableTerminationProtection"
+      - Label:
+          default: "OpenVPN Settings"
+        Parameters:
+          - "pAdminPassword"
+          - "pAdminCidr"
+          - "pBastionCidr"
+      - Label:
+          default: "Tagging"
+        Parameters:
+          - "pTagEnvironment"
+          - "pTagOwner"
+    ParameterLabels:
+      pVpcId:
+        default: "VPC ID"
+      pVpcCidr :
+        default: "VPC CIDR"
+      pSubnetId:
+        default: "Subnet ID"
+      pSourceAmi:
+        default: "Source AMI"
+      pInstanceType:
+        default: "Instance Size"
+      pKeyName:
+        default: "Instance KeyPair"
+      pEnableTerminationProtection:
+        default: "Enable Termination Protection"
+      pAdminPassword:
+        default: "Administrator Password"
+      pAdminCidr:
+        default: "Administrator Web Access CIDR"
+      pBastionCidr:
+        default: "SSH Access CIDR"
+      pTagEnvironment:
+        default: "Environment Tag"
+      pTagOwner:
+        default: "Owner Tag"
+
+
+# Map Updated 5/7/2018
+# for i in $(aws ec2 describe-regions | jq -r '.Regions[].RegionName' | sort); do
+# echo -n "$i: ";
+# aws --region $i ec2 describe-images --owners amazon --filters "Name=name,Values=amzn-ami-hvm-2018.03.0.20180412-x86_64-gp2" | jq -r '.Images[].ImageId'
+# done
+
+Mappings:
+  RegionMap:
+    ap-northeast-1:
+      "amazonLinuxAmi": "ami-28ddc154"   # Asia Pacific (Tokyo)
+    ap-northeast-2:
+      "amazonLinuxAmi": "ami-efaf0181"   # Asia Pacific (Seoul)
+    ap-south-1:
+      "amazonLinuxAmi": "ami-b46f48db"   # Asia Pacific (Mumbai)
+    ap-southeast-1:
+      "amazonLinuxAmi": "ami-64260718"   # Asia Pacific (Singapore)
+    ap-southeast-2:
+      "amazonLinuxAmi": "ami-60a26a02"   # Asia Pacific (Sydney)
+    ca-central-1:
+      "amazonLinuxAmi": "ami-2f39bf4b"   # Canada (Central)
+    eu-central-1:
+      "amazonLinuxAmi": "ami-1b316af0"   # EU (Frankfurt)
+    eu-west-1:
+      "amazonLinuxAmi": "ami-9cbe9be5"   # EU (Ireland)
+    eu-west-2:
+      "amazonLinuxAmi": "ami-c12dcda6"   # EU (London)
+    eu-west-3:
+      "amazonLinuxAmi": "ami-cae150b7"   # EU (Paris)
+    sa-east-1:
+      "amazonLinuxAmi": "ami-f09dcc9c"   # South America (São Paulo)
+    us-east-1:
+      "amazonLinuxAmi": "ami-467ca739"   # US East (N. Virginia)
+    us-east-2:
+      "amazonLinuxAmi": "ami-976152f2"   # US East (Ohio)
+    us-west-1:
+      "amazonLinuxAmi": "ami-46e1f226"   # US West (N. California)
+    us-west-2:
+      "amazonLinuxAmi": "ami-6b8cef13"   # US West (Oregon)
+
+
+Conditions:
+
+  CondUseCustomAmi: !Not [!Equals ["", !Ref pSourceAmi]]
+
+
+Resources:
+
+    roleOpenvpn:
+      Type: "AWS::IAM::Role"
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Principal:
+                Service:
+                  - "ec2.amazonaws.com"
+              Action:
+                - "sts:AssumeRole"
+        ManagedPolicyArns:
+          - "arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM"
+        RoleName: "openvpn"
+
+    instanceProfileOpenvpn:
+      Type: "AWS::IAM::InstanceProfile"
+      Properties:
+        Roles:
+          - !Ref roleOpenvpn
+        InstanceProfileName: "openvpn"
+
+    sgOpenvpn:
+      Type: "AWS::EC2::SecurityGroup"
+      Properties:
+        VpcId: !Ref pVpcId
+        GroupName: "openvpn"
+        GroupDescription: "OpenVPN AS"
+        SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: "443"
+          ToPort: "443"
+          CidrIp: "0.0.0.0/0"
+          Description: "HTTPS Web Login"
+        - IpProtocol: "udp"
+          FromPort: "1192"
+          ToPort: "1192"
+          CidrIp: "0.0.0.0/0"
+          Description: "Encrypted data transit"
+        - IpProtocol: "tcp"
+          FromPort: "943"
+          ToPort: "943"
+          CidrIp: !Ref pAdminCidr
+          Description: "Administation HTTPS Web Login"
+        - IpProtocol: "tcp"
+          FromPort: "22"
+          ToPort: "22"
+          CidrIp: !Ref pBastionCidr
+          Description: "SSH administration"
+        Tags:
+          - Key: "Name"
+            Value: "openvpn"
+          - Key: "environment"
+            Value: !Ref pTagEnvironment
+          - Key: "managed-by"
+            Value: "cloudformation"
+          - Key: "owner"
+            Value: !Ref pTagOwner
+
+    eip1:
+      Type: "AWS::EC2::EIP"
+      Properties:
+        Domain: vpc
+
+    eip1association:
+      Type: "AWS::EC2::EIPAssociation"
+      Properties:
+        AllocationId: !GetAtt eip1.AllocationId
+        InstanceId: !Ref ec2openvpn
+
+    ec2openvpn:
+      Type: "AWS::EC2::Instance"
+      Properties:
+        ImageId: !If [ CondUseCustomAmi, !Ref pSourceAmi, !FindInMap [RegionMap, !Ref "AWS::Region", amazonLinuxAmi ] ]
+        InstanceType: !Ref pInstanceType
+        BlockDeviceMappings:
+          - DeviceName: "/dev/xvda"
+            Ebs:
+              VolumeType: "gp2"
+              VolumeSize: "16"
+        SecurityGroupIds:
+          - !Ref sgOpenvpn
+        SubnetId: !Ref pSubnetId
+        KeyName: !Ref pKeyName
+        IamInstanceProfile: !Ref instanceProfileOpenvpn
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            sed -i s/^HOSTNAME.*/HOSTNAME=openvpn/g /etc/sysconfig/network
+            yum -y update
+            # AWS Systems Manager (SSM) Agent
+            yum -y install https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
+            # AWS Inspector Agent
+            curl -O https://d1wk0tztpsntt1.cloudfront.net/linux/latest/install
+            chmod +x install && ./install
+            # AWS CloudWatch Logs Agent
+            yum -y install awslogs
+            curl -o /etc/awslogs/awslogs.conf https://s3.amazonaws.com/privo-public-configuration/awslogs/openvpn/amazon-linux/awslogs.conf
+            chkconfig awslogs on
+            sed -i s/us\-east\-1/${AWS::Region}/g /etc/awslogs/awscli.conf
+            service awslogs restart
+            # OpenVPN
+            curl -O http://swupdate.openvpn.org/as/openvpn-as-2.5-CentOS7.x86_64.rpm
+            yum -y install openvpn-as-2.5-CentOS7.x86_64.rpm
+            rm -f openvpn-as-2.5-CentOS7.x86_64.rpm
+            echo "export PATH=$PATH:/usr/local/openvpn_as/scripts" > /etc/profile.d/openvpn.sh
+            echo ${pAdminPassword} | passwd --stdin openvpn
+            source /etc/profile.d/openvpn.sh
+            ln -s /sbin/ifconfig /usr/sbin/ifconfig
+            sacli --key "host.name" --value "$(curl 169.254.169.254/latest/meta-data/public-ipv4)" ConfigPut
+            sacli --key "vpn.client.routing.reroute_dns" --value "false" ConfigPut
+            sacli --key "vpn.client.routing.reroute_gw" --value "false" ConfigPut
+            sacli --key "vpn.server.routing.private_network.0" --value "${pVpcCidr}" ConfigPut
+            sacli start
+            reboot
+        DisableApiTermination: !Ref pEnableTerminationProtection
+        Tags:
+          - Key: "Name"
+            Value: "openvpn"
+          - Key: "environment"
+            Value: !Ref pTagEnvironment
+          - Key: "backup"
+            Value: "yes"
+          - Key: "inspector"
+            Value: "yes"
+          - Key: "retention"
+            Value: "7"
+          - Key: "managed-by"
+            Value: "cloudformation"
+          - Key: "owner"
+            Value: !Ref pTagOwner
+          - Key: "ssm"
+            Value: "yes"
+
+
+Outputs:
+
+    OpenVPNServerAdminUsername:
+      Value: "openvpn"
+      Description: "OpenVPN AS Administrator Username"
+
+    OpenVPNServerAdminURL:
+      Value: !Sub "https://${eip1}:943/admin"
+      Description: "OpenVPN AS Admin URL"
+
+    OpenVPNServerURL:
+      Value: !Sub "https://${eip1}"
+      Description: "OpenVPN AS URL"

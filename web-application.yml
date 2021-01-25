@@ -1,0 +1,139 @@
+# CodeDeploy Cloudformation tempate for AutoScalingGroup
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Stack for CodeDeploy
+Parameters:
+
+
+  ASGName:
+    Description: "Name of AutoScalingGroup"
+    Type: String
+    Default: "Web Application Autoscaling Group"
+
+  Bucket:
+    Description: "Name of the CodeDeploy Bucket"
+    Type: String
+  
+  CodeDeployApplicationName:
+    Type: String
+    Description: Name of the Application in CodeDeploy
+
+  CodeDeployGroupName:
+    Type: String
+    Description: Name of the CodeDeployment Group
+
+  evanCertArn:
+    Type: String
+    Description: Certificate ARN for support.evanyouritguy.com
+
+  CodeDeploymentDescription:
+    Type: String
+    Description: Description of CodeDeployment Group
+
+Resources:
+  CodeDeploymentSNSTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties: {}
+
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName:  !Ref CodeDeployApplicationName
+
+  DeploymentGroup:
+    Type: 'AWS::CodeDeploy::DeploymentGroup'
+    Properties:
+      AlarmConfiguration:
+        Alarms:
+          - Name: !Ref CpuAlarmHigh
+      ApplicationName: !Ref CodeDeployApplication
+      DeploymentConfigName: CodeDeployDefault.OneAtATime
+      DeploymentGroupName: !Ref CodeDeployGroupName
+      ServiceRoleArn: !GetAtt CodeDeployServiceRole.Arn
+      AutoScalingGroups:
+      - !Ref AutoScalingGroup
+      TriggerConfigurations:
+         - TriggerEvents:
+             - DeploymentSuccess
+             - DeploymentRollback
+           TriggerName: DeploymentGroupTrigger
+           TriggerTargetArn: !Ref CodeDeploymentSNSTopic
+
+  CodeDeployServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - codedeploy.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      RoleName: codedeploy-service-role
+
+
+  EC2ManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+
+      Path: "/"
+      Policies:
+      - PolicyName: BucketPolicy
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Resource: !Sub "arn:aws:s3:::${Bucket}/*"
+            Action:
+            - s3:List*
+            - s3:Get*
+            - s3:Put*
+      - PolicyName: WebAppBucketPolicy
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Resource: !Sub "arn:aws:s3:::${WebAppBucket}/*"
+            Action:
+            - s3:List*
+            - s3:Get*
+            - s3:Put*
+      - PolicyName: "ec2-codedeploy-autoscaling-actions"
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action:
+              - "autoscaling:EnterStandby"
+              - "autoscaling:ExitStandby"
+              - "autoscaling:DescribeAutoScalingGroups"
+              - "autoscaling:DescribeAutoScalingInstances"
+              - "autoscaling:UpdateAutoScalingGroup"
+              - "ec2:DescribeInstances"
+              - "elasticloadbalancing:DescribeInstanceHealth"
+              - "elasticloadbalancing:DescribeLoadBalancers"
+              - "elasticloadbalancing:DescribeLoadBalancerAttributes"
+              - "elasticloadbalancing:DeregisterInstancesFromLoadBalancer"
+              - "elasticloadbalancing:RegisterInstancesWithLoadBalancer"
+              Resource: "*"
+      - PolicyName: CodeDeployBucketPolicy
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Resource: !Sub "arn:aws:s3:::aws-codedeploy-us-east-1/*"
+            Action:
+            - s3:Get*
+            - s3:List*
+      - PolicyName: CloudWatchLogWriteOnly
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Resource: "arn:aws:logs:*.*.*"
+            Action:
+              - "logs:CreateLogGroup"
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+              - "logs:DescribeLogStreams"
+
+  
