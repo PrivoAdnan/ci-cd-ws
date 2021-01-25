@@ -1,0 +1,346 @@
+#
+#
+
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: "Base stack for deploying EC2 Instance based on AMI"
+
+Parameters:
+
+  pVPCID:
+    Type: "AWS::EC2::VPC::Id"
+    Description: ""
+
+  pVPCCidr:
+    Type: "String"
+    Description: "VPC CIDR for Security Group Ingress"
+
+  pInstanceSubnet:
+    Type: "AWS::EC2::Subnet::Id"
+    Description: "Private/App Subnet ID for deployment"
+
+  pInstanceAMI:
+    Type: "String"
+    Default: "ami-1853ac65"
+    Description: "AMI ID of desired Instance. (Default Amazon Linux, us-east-1)"
+
+  pInstanceName:
+    Type: "String"
+    Default: ""
+    Description: "Instance Name tag"
+
+  pInstanceType:
+    Type: "String"
+    Default: "t2.medium"
+    Description: "Family and size"
+    AllowedValues:
+      - "t2.micro"
+      - "t2.small"
+      - "t2.medium"
+      - "t2.large"
+      - "m5.large"
+      - "m4.large"
+      - "m4.xlarge"
+      - "m4.2xlarge"
+      - "m4.4xlarge"
+      - "m4.10xlarge"
+      - "r3.large"
+      - "r3.xlarge"
+      - "r3.2xlarge"
+      - "r3.4xlarge"
+      - "r3.8xlarge"
+    ConstraintDescription: "Please select a valid instance type."
+
+  pInstanceVolumeSize:
+    Type: "Number"
+    Default: "60"
+    Description: "Minimum 8GB, minimum 30GB recommend for Windows."
+    MinValue: "8"
+
+  pKeyPair:
+    Type: "AWS::EC2::KeyPair::KeyName"
+    Default: ""
+    Description: "Used for Windows Password recovery"
+
+  pCreateSG:
+    Type: "String"
+    Default: false
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: "Create internal VPC access SG"
+
+  pSecGroup:
+    Type: "String"
+    Description: "Do not specify if creating a new SG."
+    
+  pInstanceTermination:
+    Type: "String"
+    Default: "true"
+    Description: "Enable Termination Protection"
+    AllowedValues:
+      - "true"
+      - "false"
+    
+
+  pAmazonLinuxAMI:
+    Type: "String"
+    Default: "false"
+    Description: "Amazon Linux AMI - Referenced in BlockDeviceMappings"
+    AllowedValues:
+      - "true"
+      - "false"
+
+  pEnableEBSBackups:
+    Type: "String"
+    Default: "true"
+    Description: "Enable scheduled snapshots."
+    AllowedValues:
+      - "true"
+      - "false"
+    
+
+  pScheduledBackups:
+    Type: String
+    Default: "retention_days"
+    Description: "Interval of backups."
+    AllowedValues:
+      - retention_days
+      - retention_weeks
+      - retention_monts
+
+  pBackupValue:
+    Type: "Number"
+    Default: "30"
+    Description: "Number of days, weeks, or months of retention."
+    MinValue: "1"
+
+  pManagedCloud:
+    Type: "String"
+    Default: "false"
+    Description: "Will this instance have monitoring agents installed?"
+    AllowedValues:
+      - "true"
+      - "false"
+    
+
+  pManagedSecurity:
+    Type: "String"
+    Default: "false"
+    Description: "Will this instance have security agents installed?"
+    AllowedValues:
+      - "true"
+      - "false"
+    
+
+  pTagEnvironment:
+    Type: "String"
+    Description: "Environment type for default resource tagging"
+    Default: "production"
+    AllowedValues:
+      - "production"
+      - "staging"
+      - "sandbox"
+      - "test"
+      - "development"
+      - "qa"
+
+  pTagOwner:
+    Type: "String"
+    Default: ""
+    Description: "Owner of the resources.  Person/Department,etc"
+
+
+Metadata:
+  AWS::CloudFormation::Interface:
+      ParameterGroups:
+        - Label:
+            default: "Network Settings"
+          Parameters:
+              - pVPCID
+              - pVPCCidr
+              - pInstanceSubnet
+        - Label:
+            default: "Instance Settings"
+          Parameters:
+            - pInstanceName
+            - pInstanceType
+            - pInstanceAMI
+            - pKeyPair
+            - pCreateSG
+            - pSecGroup
+            - pInstanceTermination
+            - pInstanceVolumeSize
+            - pEnableEBSBackups
+            - pScheduledBackups
+            - pBackupValue
+            - pAmazonLinuxAMI
+        - Label:
+            default: "Tagging"
+          Parameters:
+            - pManagedCloud
+            - pManagedSecurity
+            - pTagEnvironment
+            - pTagOwner
+      ParameterLabels:
+        pVPCID:
+          default: "VPC ID"
+        pVPCCidr:
+          default: "VPC CIDR"
+        pInstanceSubnet:
+          default: "Instance Subnet"
+        pInstanceName:
+          default: "Instance Name"
+        pInstanceType:
+          default: "Instance Type"
+        pInstanceAMI:
+          default: "Instance AMI"
+        pKeyPair:
+          default: "Key Pair"
+        pCreateSG:
+          default: "Create vpc-general SG"
+        pSecGroup:
+          default: "Security Group"
+        pInstanceTermination:
+          default: "Instance Termination"
+        pAmazonLinuxAMI:
+          default: "Amazon Linux AMI"
+        pInstanceVolumeSize:
+          default: "Volume Size"
+        pEnableEBSBackups:
+          default: "Enable EBS Backups"
+        pScheduledBackups:
+          default: "Backup Schedule Type"
+        pBackupValue:
+          default: "Backup Schedule Value"
+        pManagedCloud:
+          default: "Managed Cloud"
+        pManagedSecurity:
+          default: "Managed Security"
+        pTagEnvironment:
+          default: "Environment Tag"
+        pTagOwner:
+          default: "Owner"
+
+
+Conditions:
+
+  CondEnableEBSBackups: !Equals [true, !Ref pEnableEBSBackups]
+  CondOther: !Equals [!Ref pAmazonLinuxAMI, "false"]
+  CondAmazonLinux: !Equals [!Ref pAmazonLinuxAMI, "true"]
+  CondCreateSG: !Equals [true, !Ref pCreateSG]
+
+Resources:
+
+  #
+  # EC2 Instances
+  #
+
+  sgVpcGeneral:
+    Type: "AWS::EC2::SecurityGroup"
+    Condition: "CondCreateSG"
+    Properties:
+      GroupName: "SG-vpc-general"
+      GroupDescription: "internal VPC access"
+      VpcId: !Ref pVPCID
+      SecurityGroupIngress:
+        - IpProtocol: "-1"
+          FromPort: "-1"
+          ToPort: "-1"
+          CidrIp: !Ref pVPCCidr
+          Description: "VPC internal"
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          FromPort: "-1"
+          ToPort: "-1"
+          CidrIp: "0.0.0.0/0"
+          Description: "all"
+      Tags:
+        - Key: "Name"
+          Value: "SG-vpc-general"
+        - Key: "managed-by"
+          Value: "cloudformation"
+        - Key: "environment"
+          Value: !Ref pTagEnvironment
+        - Key: "owner"
+          Value: !Ref pTagOwner
+
+  iamEC2Instance:
+    Type: "AWS::IAM::Role"
+    Properties:
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      RoleName: !Ref pInstanceName
+
+  iamEC2Profile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Roles:
+        - !Ref iamEC2Instance
+      InstanceProfileName: !Ref pInstanceName
+
+  ec2Instance01:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      BlockDeviceMappings:
+        -
+          DeviceName: !If [CondOther, "/dev/sda1", !If [CondAmazonLinux, "/dev/xvda", !Ref "AWS::NoValue"]]
+          Ebs:
+            VolumeType: "gp2"
+            VolumeSize: !Ref pInstanceVolumeSize
+      DisableApiTermination: !Ref pInstanceTermination
+      EbsOptimized: false
+      IamInstanceProfile: !Ref iamEC2Profile
+      ImageId: !Ref pInstanceAMI
+      InstanceType: !Ref pInstanceType
+      KeyName: !Ref pKeyPair
+      SecurityGroupIds:
+        - !If [CondCreateSG, !Ref sgVpcGeneral, !Ref pSecGroup]
+      SubnetId: !Ref pInstanceSubnet
+      Tags:
+        - Key: "Name"
+          Value: !Ref pInstanceName
+        - Key: "backup"
+          Value: !If [ CondEnableEBSBackups, "yes", "no" ]
+        - Key: !Ref pScheduledBackups
+          Value: !Ref pBackupValue
+        - Key: "managed-by"
+          Value: cloudformation
+        - Key: "environment"
+          Value: !Ref pTagEnvironment
+        - Key: "owner"
+          Value: !Ref pTagOwner
+        - Key: "ssm"
+          Value: "yes"
+        - Key: "managed-cloud"
+          Value: !Ref pManagedCloud
+        - Key: "managed-security"
+          Value: !Ref pManagedSecurity
+      UserData:
+        Fn::Base64: !Sub |
+        # For Linux, uncomment below and add your code:
+          # !/bin/bash
+          # Begin bash code:
+          yum update -y
+          yum install httpd -y
+          service httpd start
+          chkconfig httpd on
+          cd /var/www/html
+          echo "<html><h1>This is live.</h1></html>" > index.html
+      
+          # End bash code.
+      #
+      #   # For Windows, uncomment below and add your code:
+      #     <powershell>
+      #     # Begin PS code:
+      #
+      #     </powershell>
