@@ -21,7 +21,7 @@ Parameters:
 
   pInstanceAMI:
     Type: "String"
-    Default: "ami-1853ac65"
+    Default: " ami-ea87a78f"  #US-East-2 - Ohio
     Description: "AMI ID of desired Instance. (Default Amazon Linux, us-east-1)"
 
   pInstanceName:
@@ -327,17 +327,14 @@ Resources:
           Value: !Ref pManagedSecurity
       UserData:
         Fn::Base64: !Sub |
-        # For Linux, uncomment below and add your code:
           # !/bin/bash
-          # Begin bash code:
-          yum update -y
-          yum install httpd -y
+          yum update -y; yum install httpd -y
           service httpd start
           chkconfig httpd on
           cd /var/www/html
           echo "<html><h1>This is live.</h1></html>" > index.html
       
-          # End bash code.
+        # End bash code.
       #
       #   # For Windows, uncomment below and add your code:
       #     <powershell>
