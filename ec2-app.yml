@@ -21,7 +21,7 @@ Parameters:
 
   pInstanceAMI:
     Type: "String"
-    Default: " ami-ea87a78f"  #US-East-2 - Ohio
+    Default: "ami-ea87a78f"  #US-East-2 - Ohio
     Description: "AMI ID of desired Instance. (Default Amazon Linux, us-east-1)"
 
   pInstanceName:
